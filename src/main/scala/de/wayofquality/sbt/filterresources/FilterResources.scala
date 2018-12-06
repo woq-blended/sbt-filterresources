@@ -109,24 +109,23 @@ object ResourceFilter {
       pattern.replaceAllIn(in, replacer)
     }
 
-    deleteRecursive(source)
-
     val destination = new File(targetDir, relative)
+    deleteRecursive(destination)
+
     Files.createDirectories(destination.getParentFile.toPath)
 
     val content = IO.read(source)
-    IO.write(new File(targetDir, relative), performReplace(content))
+    IO.write(destination, performReplace(content))
 
     (destination, relative)
   }
 
-  private def deleteRecursive(f : File) : Unit = {
+  private def deleteRecursive(f: File): Unit = {
     if (f.isDirectory()) {
       f.listFiles().foreach(deleteRecursive)
     }
     f.delete()
   }
-
 
   def apply(
     unfilteredResources: Seq[File],
