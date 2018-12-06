@@ -1,0 +1,3 @@
+= sbt-filterresources
+
+sbt plugin to filter resources (variable expansion)
