@@ -17,38 +17,20 @@ object FilterResources extends AutoPlugin {
     val filterResources = taskKey[Seq[(File, String)]]("Filter the unfiltered resources")
     val filterProperties = settingKey[Map[String, String]]("Extra properties to be applied while filtering")
     val filterRegex = settingKey[String]("The replacement pattern. The actual lookup-key must be matched by regex group 1.")
+    val filterResourcesFailOnMissingMatch = settingKey[Boolean]("Iff true, fail when replacement pattern was detected, but no replacement property was found.")
   }
 
   import autoImport._
 
   override def projectSettings: Seq[Def.Setting[_]] =
-    inConfig(Compile)(Seq(
-      filterProperties := Map.empty,
-      filterSources := Seq(baseDirectory.value / "src" / "main" / "filterResources"),
-      filterTargetDir := classDirectory.value,
-      filterRegex := """\$\{(.+?)\}""",
-      filterResources := {
-        val envProps: Map[String, String] = sys.env.map { case (k, v) => s"env.$k" -> v }
-        val sysProps: Map[String, String] = sys.props.map { case (k, v) => s"sys.$k" -> v }.toMap
+    Seq(
+      filterRegex := """\$\{(.+?)\}"""
 
-        ResourceFilter(
-          filterSources.value,
-          filterRegex.value,
-          filterTargetDir.value,
-          envProps ++ sysProps ++ filterProperties.value
-        )(streams.value.log)
-      },
-      exportedProducts := {
-        // exec before exportedProducts
-        filterResources.value
-        exportedProducts.value
-      }
-    )) ++
-      inConfig(Test)(Seq(
+    ) ++ inConfig(Compile)(Seq(
+        filterResourcesFailOnMissingMatch := true,
         filterProperties := Map.empty,
-        filterSources := Seq(baseDirectory.value / "src" / "test" / "filterResources"),
+        filterSources := Seq(baseDirectory.value / "src" / "main" / "filterResources"),
         filterTargetDir := classDirectory.value,
-        filterRegex := """\$\{(.+?)\}""",
         filterResources := {
           val envProps: Map[String, String] = sys.env.map { case (k, v) => s"env.$k" -> v }
           val sysProps: Map[String, String] = sys.props.map { case (k, v) => s"sys.$k" -> v }.toMap
@@ -57,7 +39,31 @@ object FilterResources extends AutoPlugin {
             filterSources.value,
             filterRegex.value,
             filterTargetDir.value,
-            envProps ++ sysProps ++ filterProperties.value
+            envProps ++ sysProps ++ filterProperties.value,
+            filterResourcesFailOnMissingMatch.value
+          )(streams.value.log)
+        },
+        exportedProducts := {
+          // exec before exportedProducts
+          filterResources.value
+          exportedProducts.value
+        }
+      )) ++
+      inConfig(Test)(Seq(
+        filterResourcesFailOnMissingMatch := true,
+        filterProperties := Map.empty,
+        filterSources := Seq(baseDirectory.value / "src" / "test" / "filterResources"),
+        filterTargetDir := classDirectory.value,
+        filterResources := {
+          val envProps: Map[String, String] = sys.env.map { case (k, v) => s"env.$k" -> v }
+          val sysProps: Map[String, String] = sys.props.map { case (k, v) => s"sys.$k" -> v }.toMap
+
+          ResourceFilter(
+            filterSources.value,
+            filterRegex.value,
+            filterTargetDir.value,
+            envProps ++ sysProps ++ filterProperties.value,
+            filterResourcesFailOnMissingMatch.value
           )(streams.value.log)
         },
         exportedProducts := {
@@ -95,15 +101,22 @@ object ResourceFilter {
     pattern: Regex,
     targetDir: File,
     relative: String,
-    properties: Map[String, String]
+    properties: Map[String, String],
+    failOnMiss: Boolean
   )(implicit log: Logger): (File, String) = {
 
     def performReplace(in: String): String = {
       val replacer = { m: Regex.Match =>
-        var variable = m.group(1)
+        val variable = m.group(1)
         val matched = m.matched
 
-        quoteReplacement(properties.getOrElse(variable, sys.error(s"Unknown variable: [$variable]")))
+        quoteReplacement(properties.getOrElse(
+          variable,
+          if (failOnMiss) sys.error(s"Unknown variable: [$variable]") else {
+            log.warn(s"${source}: Can't replace unknown variable: [${variable}]")
+            matched
+          }
+        ))
       }
 
       pattern.replaceAllIn(in, replacer)
@@ -131,11 +144,12 @@ object ResourceFilter {
     unfilteredResources: Seq[File],
     pattern: String,
     filterTargetDir: File,
-    props: Map[String, String]
+    props: Map[String, String],
+    failOnMiss: Boolean
   )(implicit log: Logger): Seq[(File, String)] = {
     val files = unfilteredResources.flatMap(filterCandidates)
     val regex = new Regex(pattern)
-    val filtered = files.map { case (file, relative) => applyFilter(file, regex, filterTargetDir, relative, props) }
+    val filtered = files.map { case (file, relative) => applyFilter(file, regex, filterTargetDir, relative, props, failOnMiss) }
     log.debug("Filtered Resources: " + filtered.mkString(","))
 
     filtered
