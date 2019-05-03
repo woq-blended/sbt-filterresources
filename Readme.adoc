@@ -1,3 +1,9 @@
 = sbt-filterresources
 
 sbt plugin to filter resources (variable expansion)
+
+== Changelog
+
+=== sbt-filterresources 0.1.1 - 2019-05-03
+
+* Initial public release
