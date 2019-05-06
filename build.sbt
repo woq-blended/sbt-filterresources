@@ -2,7 +2,7 @@ sbtPlugin := true
 
 name := "sbt-filterresources"
 
-organization := "de.wayofquality"
+organization := "de.wayofquality.sbt"
 
 licenses += ("Apache-2.0", url("https://www.apache.org/licenses/LICENSE-2.0.html"))
 
